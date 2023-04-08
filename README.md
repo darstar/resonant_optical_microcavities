@@ -65,12 +65,13 @@ get_gouy:
   returns the gouy phase at a certain z coordinate.
   
 angular_spectrum:
-  propagates the initial field from z=0 to a different z plane.
+  propagates the initial field from z=0 to a different z plane, using the angular spectrum method.
   
 propagate_mirr:
+  propagates the initial field, using the angular spectrum method, to the mirror surface, by inteprolation.
 
 propagate_plane:
-
-
+ propagates the initial field, using the angular spectrum method, to the z=L plane and used a phase plate to correct for the mirror.
+ 
 # Plot routines file
 Creates plots depending on mirror/plane propagation.
