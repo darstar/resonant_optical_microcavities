@@ -10,7 +10,6 @@ from statsmodels.stats.weightstats import DescrStatsW
 PI=np.pi
 """
 higher p modes?? --> solved: gouy phase times (N+1)
-
 if parax and calculated are very different --> maybe a different profile?? Modal decompositon
 """
 class Geometry():
@@ -57,24 +56,52 @@ class Field():
         self.abs=np.abs(self.profile)
         self.intensity=self.abs**2
 
-        self.phase=np.angle(self.profile)
+        self.phase=np.mod(np.angle(self.profile),PI)
 
         self.real=self.profile.real
         self.imag=self.profile.imag
-    
-    def __mul__(self, other:np.ndarray):
+
+    def __mul__(self, other):
         """
         Operator overload, making a 'Field' object able to
-        multiple with a numpy array. Now the profile is multiplied
-        with the array
+        multiple with a numpy array, a numer or another Field object.
         """
-        return self.profile*other
+
+        if isinstance(other, self.__class__):
+            return Field(self.profile*other.profile,self.geometry)
+        elif isinstance(other, complex) or isinstance(self, np.ndarray):
+            return Field(self.profile*other,self.geometry)
+
+    def electric_field(self,z):
+        return self*np.exp(1j*self.geometry.k*z)
+    
+    def slowly_varying(self,z):
+        return self*np.exp(-1j*self.geometry.k*z)
     
 class Field1D(Field):
-    def __init__(self):
-        super().__init__()
+    def __init__(self,profile,geometry:Geometry):
+        super().__init__(profile,geometry)
         self.phase_on_axis=self.phase[self.geometry.grid_size//2] #extra paramter for 1D field: the on-axis phase
 
+    def __mul__(self, other):
+        """
+        Operator overload, making a 'Field' object able to
+        multiple with a numpy array, a numer or another Field object.
+        """
+        
+        if isinstance(other, self.__class__):
+            return Field1D(self.profile*other.profile,self.geometry)
+        
+        elif isinstance(other, int) or isinstance(other, float):
+            return self.profile*other
+        
+        elif isinstance(other, np.ndarray) or isinstance(other,complex) or isinstance(other,np.complex128):
+            if np.iscomplexobj(other):
+                return Field1D(self.profile*other,self.geometry)
+            else:
+                return self.profile*other
+    def __add__(self,other):
+        return Field1D(self.profile+other.profile,self.geometry)
     def power(self):
         """
         Returns the intensity weighted power of the field
@@ -95,16 +122,31 @@ class Field1D(Field):
         """
         Shifts the field over the average phase
         """
-        return Field1D(self*np.exp(-1j*self.phase_moments()[0]),self.geometry)
+        return self*np.exp(-1j*self.phase_moments()[0])
     
     def phase_plate(self):
         """
         Phase correction for propagation to the z=L plane
         """
-        return Field1D(self*np.exp(1j*(self.geometry.L-self.geometry.k*self.geometry.mirror_coords())),self.geometry)
+        return self*np.exp(1j*(self.geometry.L-self.geometry.k*self.geometry.mirror_coords()))
 
 class Field2D(Field):
-
+    def __mul__(self, other:np.ndarray):
+        """
+        Operator overload, making a 'Field' object able to
+        multiple with a numpy array. Now the profile is multiplied
+        with the array
+        """
+        return Field2D(self.profile*other,self.geometry)
+    
+    def __mul__(self, other:complex):
+        """
+        Operator overload, making a 'Field' object able to
+        multiple with a numpy array. Now the profile is multiplied
+        with the array
+        """
+        return Field2D(self.profile*other,self.geometry)
+    
     def power(self):
         """
         Returns the intensity weighted power of the field
@@ -131,6 +173,10 @@ class Mode():
         self.z0 = np.sqrt( self.geometry.L*(self.geometry.Rm-self.geometry.L) )
         self.w0 = np.sqrt(self.z0*self.geometry.wavelength/PI)
 
+    def angular_information(self):
+        X,Y=self.geometry.get_2d_grid()
+        return np.exp(1j*self.l*np.arctan2(Y,X))
+
     def field_profile(self,z=0):
         """
         Returns a normalized LG(p,l) mode, as a 2D field profile.
@@ -142,13 +188,12 @@ class Mode():
         scaling = np.sqrt(2)/wz # coordinate scaling
 
         rho = scaling*np.sqrt(X**2+Y**2) 
-        theta=np.arctan2(Y,X)
 
         f = (rho)**(self.l)*assoc_laguerre(rho**2,self.p,self.l) * np.exp(-rho**2/2)
-        return Field2D(f*normalization*scaling,self.geometry)
+        return Field2D(f*normalization*scaling*self.angular_information(),self.geometry)
 
     def get_gouy(self,z):
-        return np.arctan2(z,self.z0)*(self.N+1)
+        return np.mod(-np.arctan2(z,self.z0)*(self.N+1),PI)
     
     def angular_spectrum(self,z):
         kbar=self.geometry.k/(2*PI) 
@@ -163,7 +208,7 @@ class Mode():
 
         prop_vector = np.exp(1j*(kbar_z-kbar)*2*PI*z)
 
-        return fftpack.ifft2((psi_fourier*prop_vector))
+        return fftpack.ifft2((psi_fourier*prop_vector))/self.angular_information()
 
     def propagate_mirr(self):
         """Returns the electric field at the mirror surface"""
@@ -181,3 +226,4 @@ class Mode():
         """Returns the electric field at the z=L plane"""
         electric_field = self.angular_spectrum(self.geometry.L)[self.geometry.grid_size//2]*np.exp(1j*self.geometry.k*self.geometry.L)
         return Field1D(electric_field,self.geometry)
+# %%

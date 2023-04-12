@@ -18,7 +18,7 @@ def plot_mirr(e_mirr:Field1D,e_0:Mode):
     plt.xlabel(r"x [$\mu m$]")
     axs[0].set_title(f"Phase shifted electric field on the mirror surface \n ({paraxial} propagation of {e_0.l}{e_0.p} mode ) \n \
         Average phase = {phase_avg:.4f}, RMS phase = {phase_rms:.4f}\n \
-        On-axis phase = {e_mirr.phase_on_axis:.4f}, Paraxial phase = {-e_0.get_gouy(geometry.L):.4f}\n \
+        On-axis phase = {e_mirr.phase_on_axis:.4f}, Paraxial phase = {e_0.get_gouy(geometry.L):.4f}\n \
         L/(Rm-L)={geometry.L/(geometry.Rm-geometry.L)}, L={geometry.L}, Rm={geometry.Rm}",fontsize=10)
     
     axs[0].set_ylabel(r"$E [V \mu m^{-1}]$")
@@ -40,7 +40,6 @@ def plot_plane(e_plane:Field1D,e_0:Mode):
     """
     Phase plot of the field propagation to z=L.
     """
-        
     geometry=e_plane.geometry
     e_phase = e_plane.phase + geometry.k*(geometry.mirror_coords()-geometry.L)
     mask=(geometry.x>0)&(geometry.x<7)
@@ -53,7 +52,7 @@ def plot_plane(e_plane:Field1D,e_0:Mode):
               r"$Arg[E]-k\cdot z_m$")
     plt.xlabel(r'$x \;[\mu m]$')
     plt.ylabel(r"$Arg \;[rad]$")
-    plt.axhline(-e_0.get_gouy(geometry.L),xmin=0,xmax=1,ls='--',color='r',label=f'Paraxial phase {-e_0.get_gouy(geometry.L):.4f}')
+    plt.axhline(e_0.get_gouy(geometry.L),xmin=0,xmax=1,ls='--',color='r',label=f'Paraxial phase {-e_0.get_gouy(geometry.L):.4f}')
     plt.axhline(e_plane.phase_on_axis,xmin=0,xmax=1,ls='--',color='k',label=rf'On-axis phase: {e_plane.phase_on_axis:.4f}')
     plt.plot(geometry.x[mask],e_phase[mask],label=r'$\psi(z=L)\cdot \exp(ikz_m)$')
     plt.legend()
