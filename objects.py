@@ -9,7 +9,6 @@ from statsmodels.stats.weightstats import DescrStatsW
 
 PI=np.pi
 """
-higher p modes?? --> solved: gouy phase times (N+1)
 if parax and calculated are very different --> maybe a different profile?? Modal decompositon
 """
 class Geometry():
@@ -56,7 +55,7 @@ class Field():
         self.abs=np.abs(self.profile)
         self.intensity=self.abs**2
 
-        self.phase=np.mod(np.angle(self.profile),PI)
+        self.phase=np.angle(self.profile)
 
         self.real=self.profile.real
         self.imag=self.profile.imag
@@ -100,8 +99,10 @@ class Field1D(Field):
                 return Field1D(self.profile*other,self.geometry)
             else:
                 return self.profile*other
+            
     def __add__(self,other):
         return Field1D(self.profile+other.profile,self.geometry)
+    
     def power(self):
         """
         Returns the intensity weighted power of the field
@@ -131,21 +132,26 @@ class Field1D(Field):
         return self*np.exp(1j*(self.geometry.L-self.geometry.k*self.geometry.mirror_coords()))
 
 class Field2D(Field):
-    def __mul__(self, other:np.ndarray):
+    def __mul__(self, other):
         """
         Operator overload, making a 'Field' object able to
-        multiple with a numpy array. Now the profile is multiplied
-        with the array
+        multiple with a numpy array, a numer or another Field object.
         """
-        return Field2D(self.profile*other,self.geometry)
+        
+        if isinstance(other, self.__class__):
+            return Field2D(self.profile*other.profile,self.geometry)
+        
+        elif isinstance(other, int) or isinstance(other, float):
+            return self.profile*other
+        
+        elif isinstance(other, np.ndarray) or isinstance(other,complex) or isinstance(other,np.complex128):
+            if np.iscomplexobj(other):
+                return Field2D(self.profile*other,self.geometry)
+            else:
+                return self.profile*other
     
-    def __mul__(self, other:complex):
-        """
-        Operator overload, making a 'Field' object able to
-        multiple with a numpy array. Now the profile is multiplied
-        with the array
-        """
-        return Field2D(self.profile*other,self.geometry)
+    def __add__(self,other):
+        return Field2D(self.profile+other.profile,self.geometry)
     
     def power(self):
         """
@@ -163,9 +169,10 @@ class Field2D(Field):
 class Mode():
     """Class containing paraxial eigenmodes of the cavity (LG basis)."""
 
-    def __init__(self,p,l,geometry:Geometry,paraxial):
+    def __init__(self,p,l,geometry:Geometry,paraxial,alphas=None):
         self.p=p
         self.l=l
+        self.alphas=alphas
         self.N=2*p+l
         self.geometry=geometry # geometry paramters in which the mode exists
         self.paraxial=paraxial # paraxial or non-paraxial beam propagation
@@ -182,18 +189,25 @@ class Mode():
         Returns a normalized LG(p,l) mode, as a 2D field profile.
         """
         X,Y=self.geometry.get_2d_grid()
-        normalization = (-1)**self.p* np.sqrt(factorial(self.p)/(PI*factorial(self.p+self.l)) )# mode normalization
 
         wz=self.w0 * np.sqrt( 1 + (z/self.z0)**2 )
         scaling = np.sqrt(2)/wz # coordinate scaling
-
         rho = scaling*np.sqrt(X**2+Y**2) 
 
-        f = (rho)**(self.l)*assoc_laguerre(rho**2,self.p,self.l) * np.exp(-rho**2/2)
-        return Field2D(f*normalization*scaling*self.angular_information(),self.geometry)
+        if isinstance(self.p,int):
+            normalization = (1)**self.p* np.sqrt(factorial(self.p)/(PI*factorial(self.p+self.l)) )# mode normalization
+            field = (rho)**(self.l)*assoc_laguerre(rho**2,self.p,self.l) * np.exp(-rho**2/2) * normalization
+
+        else:
+            field=0
+            for i,p in enumerate(self.p):
+                normalization = (1)**p* np.sqrt(factorial(p)/(PI*factorial(p+self.l)) )# mode normalization
+                field += (rho)**(self.l)*assoc_laguerre(rho**2,p,self.l) * np.exp(-rho**2/2)*normalization*self.alphas[i]
+
+        return Field2D(field*scaling*self.angular_information(),self.geometry)
 
     def get_gouy(self,z):
-        return np.mod(-np.arctan2(z,self.z0)*(self.N+1),PI)
+        return -np.mod(np.arctan2(z,self.z0)*(self.N+1),PI)
     
     def angular_spectrum(self,z):
         kbar=self.geometry.k/(2*PI) 
@@ -226,4 +240,56 @@ class Mode():
         """Returns the electric field at the z=L plane"""
         electric_field = self.angular_spectrum(self.geometry.L)[self.geometry.grid_size//2]*np.exp(1j*self.geometry.k*self.geometry.L)
         return Field1D(electric_field,self.geometry)
+# %%
+def projection(e_mirr:Field1D,Psi:Mode):
+    """
+    Projects the field profile on the mirror surface onto a
+    different p mode.
+    """
+    geometry=Psi.geometry
+    psi=Psi.field_profile().cross_section()
+    weight = geometry.xmax/geometry.grid_size*2*PI*abs(geometry.x)
+    return np.sum(e_mirr*psi*weight)
+
+def modal_decomposition(e_mirr:Field1D,Psi_0:Mode,tol=1e-4):
+    """
+    Calculates the projection of the electric field on the mirror
+    to the LG{lp} basis. (for delta p>0 and <0 as long as p>=0)
+    A tolerance of 1e-4 is the default, meaning that if the |alpha|^2<1e-4, the
+    projection is too small to be taken into account.
+
+    Returns the values of p, alpha and the projected mode.
+    """
+    p=Psi_0.p
+    alpha_0 = projection(e_mirr,Psi_0)
+    alpha_n=alpha_0
+    ps = np.array([],dtype=int)
+    alphas=np.array([])
+    modes = np.array([])
+
+    i=0
+    # print("Delta p > 0")
+    while abs(alpha_n)**2>tol:
+        mode_plus = Mode(p+i,Psi_0.l,Psi_0.geometry,Psi_0.paraxial)
+        modes=np.append(modes,mode_plus.field_profile().cross_section())
+        alpha_n = projection(e_mirr,mode_plus)
+        alphas=np.append(alphas,alpha_n)
+        ps=np.append(ps,p+i)
+        
+        i+=1
+    alpha_n=alpha_0
+    i=0
+
+    # print("Delta p < 0")
+    while abs(alpha_n)**2>tol:
+        i+=1
+        if p-i>=0:
+            mode_minus = Mode(p-i,Psi_0.l,Psi_0.geometry,Psi_0.paraxial)
+            alpha_n = projection(e_mirr,mode_minus)
+            alphas=np.insert(alphas,0,alpha_n)
+            modes=np.insert(modes,0,mode_minus.field_profile().cross_section())
+            ps=np.insert(ps,0,p-i)
+        else:
+            break
+    return ps,alphas, modes*alphas
 # %%
