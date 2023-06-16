@@ -24,7 +24,7 @@ wz=w0 * np.sqrt( 1 + (z/z0)**2 );gamma=wz/np.sqrt(2)
 def fundamental(X,Y,w0):
     return 1j/w0*np.exp(-(X**2+Y**2)/w0**2)
 
-from scipy.special import assoc_laguerre, eval_hermitenorm, factorial
+from scipy.special import assoc_laguerre, eval_hermitenorm, factorial,eval_genlaguerre
 def LG(n,m,X,Y,w0,gouy):
     N=n+m
     l=np.abs(n-m)
@@ -32,13 +32,15 @@ def LG(n,m,X,Y,w0,gouy):
     normalization = np.sqrt(2/np.pi) *factorial(p) / np.sqrt((factorial(n)*factorial(m)))
     scaling = np.sqrt(2)/w0
     r=X**2+Y**2
-    r_norm = scaling**2*r
+    rho = scaling**2*r
     theta=np.arctan2(Y,X)
 
-    f = (r_norm)**(l/2)*assoc_laguerre(r_norm,p,l)
+    # f = (r_norm)**(l/2)*assoc_laguerre(r_norm,p,l)
     # Question: what to do with Gouy phase?? 
+    normalization = (-1)**p* np.sqrt(factorial(p)/(np.pi*factorial(p+l)) )# mode normalization
+    field = (rho)**(l)*eval_genlaguerre(p,l,rho**2) * np.exp(-rho**2/2) * normalization*np.exp(1j*l*theta)
+    return field
 
-    return normalization*f*fundamental(X,Y,w0)*np.cos((theta*l))#*(np.cos(gouy*(N+1))+1j*np.sin(gouy*(N+1)))
 
 def HG(n,m,X,Y,w):
     N=n+m
@@ -46,11 +48,18 @@ def HG(n,m,X,Y,w):
     normalization = np.sqrt(2/np.pi) * 1/(np.sqrt(factorial(n)*factorial(m))) * 2**(-N/2)
     return normalization*eval_hermitenorm(n,scaling*X)*eval_hermitenorm(m,scaling*Y)*fundamental(X,Y,np.sqrt(2)*w0)
 
-radial_profile=LG(4,6,X,Y,w0,gouy)
-fund = fundamental(X,Y,w0)
-plt.figure()
-plt.axis('off')
-plt.imshow(np.abs(radial_profile)**2,cmap='jet')
-plt.colorbar()
-plt.tight_layout()
+# radial_profile=LG(p,l,X,Y,w0)#,gouy)
+# fund = fundamental(X,Y,w0)
+fig,ax=plt.subplots(3,3)
+fig.subplots_adjust(wspace=0,hspace=100)
+for p in range(3):
+    for l in range(3):
+        radial_profile=LG(p,l,X,Y,w0,gouy)
+        ax[p][l].axis('off')
+        ax[p][l].set_title(f"{l}{p}")
+        ax[p][l].imshow(np.abs(radial_profile)**2,cmap='binary')
+
+# plt.colorbar()
+plt.tight_layout()# %%
+plt.savefig("LG.pdf",bbox_inches="tight")
 # %%
