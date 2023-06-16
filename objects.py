@@ -99,9 +99,13 @@ class Field1D(Field):
         """
         Returns the intensity weighted power of the field
         """
-        spacing=self.geometry.xmax/self.geometry.grid_size
-        weight = abs(self.geometry.x)*2*PI*spacing
-        return np.sum(self.intensity*weight,dtype=np.double)
+        x=self.geometry.x
+        weight = PI*abs(x)#*2*geometry.xmax/geometry.grid_size
+        arg = interpolate.CubicSpline(x,abs(self.profile)**2*weight)
+        return arg.integrate(-self.geometry.xmax,self.geometry.xmax)
+        # spacing=self.geometry.xmax/self.geometry.grid_size
+        # weight = abs(self.geometry.x)*2*PI*spacing
+        # return np.sum(self.intensity*weight,dtype=np.double)
     
     def phase_moments(self):
         """
@@ -235,16 +239,16 @@ class Mode():
         psi_e = self.FFT2D(self.geometry.L)[:,self.geometry.grid_size//2] * np.exp(-1j*self.geometry.k*(self.geometry.mirror_coords()))
         return Field1D(psi_e,self.geometry)
 
-def complex_quadrature(func, a, b):
-    def real_func(x):
-        return (func(x)).real
-    def imag_func(x):
-        return (func(x)).imag
+# def complex_quadrature(func, a, b):
+#     def real_func(x):
+#         return (func(x)).real
+#     def imag_func(x):
+#         return (func(x)).imag
     
-    real_integral = integrate.quad(real_func, a, b)
-    imag_integral = integrate.quad(imag_func, a, b)
+#     real_integral = integrate.quad(real_func, a, b)
+#     imag_integral = integrate.quad(imag_func, a, b)
 
-    return real_integral[0]+1j*imag_integral[0]
+#     return real_integral[0]+1j*imag_integral[0]
 
 def projection(e_mirr:Field1D,Psi:Mode,p0):
     """
@@ -262,12 +266,10 @@ def projection(e_mirr:Field1D,Psi:Mode,p0):
     arg = interpolate.CubicSpline(x,e_mirr.profile*psi.profile*weight)
     return arg.integrate(-x[-1],x[-1])
 
-def modal_decomposition(e_mirr:Field1D,Psi_0:Mode,tol=1e-4):
+def modal_decomposition(e_mirr:Field1D,Psi_0:Mode):
     """
     Calculates the projection of the electric field on the mirror
     to the LG{lp} basis. (for delta p>0 and <0 as long as p>=0)
-    A tolerance of 1e-6 is the default, meaning that if the |alpha|^2<1e-6, the
-    projection is too small to be taken into account.
 
     Returns the values of p, alpha and the projected mode.
     """
@@ -282,9 +284,7 @@ def modal_decomposition(e_mirr:Field1D,Psi_0:Mode,tol=1e-4):
 
     i=0
     # print("Delta p > 0")
-    while abs(alpha_n)>tol:
-        if i>2:
-            break
+    while i<=2:
         mode_plus = Mode(p+i,Psi_0.l,2*Psi_0.N,Psi_0.geometry,Psi_0.paraxial)
         modes=np.append(modes,mode_plus.field_profile(geometry.L).cross_section())
         alpha_n = projection(e_mirr,mode_plus,Psi_0.p)
@@ -295,10 +295,8 @@ def modal_decomposition(e_mirr:Field1D,Psi_0:Mode,tol=1e-4):
     i=0
 
     # print("Delta p < 0")
-    while abs(alpha_n)>tol or i<=2:
+    while i<=2:
         i+=1
-        if i>2:
-            break
         if p-i>=0:
             mode_minus = Mode(p-i,Psi_0.l,Psi_0.N/2,Psi_0.geometry,Psi_0.paraxial)
             alpha_n = projection(e_mirr,mode_minus,Psi_0.p)
@@ -311,8 +309,8 @@ def modal_decomposition(e_mirr:Field1D,Psi_0:Mode,tol=1e-4):
 
 def expected_coupling(p,l,strength):
     """Returns the expected modal coupling amplitude for a (p,l) mode and
-    relative strengths""".
-    
+    relative strengths"""
+
     min2=np.sqrt((p-1)*p)*np.sqrt((p+l)*(p+l+1))
     min1=-4*p*np.sqrt(p*(p+l))
     plus1=-4*(p+1)*np.sqrt((p+1)*(p+l+1))
